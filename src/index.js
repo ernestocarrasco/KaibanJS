@@ -103,6 +103,7 @@ class Task {
     description,
     expectedOutput,
     agent,
+    dependsOn = [],
     isDeliverable = false,
     externalValidationRequired = false,
     outputSchema = null,
@@ -117,6 +118,7 @@ class Task {
     this.stats = null;
     this.duration = null;
     this.dependencies = [];
+    this.dependsOn = dependsOn;
     this.interpolatedTaskDescription = null;
     this.feedbackHistory = []; // Initialize feedbackHistory as an empty array
     this.externalValidationRequired = externalValidationRequired;

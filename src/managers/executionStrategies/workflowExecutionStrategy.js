@@ -45,6 +45,10 @@ class WorkflowExecutionStrategy {
     this.useTeamStore.getState().updateTaskStatus(taskId, status);
   }
 
+  _updateStatusOfMultipleTasks(tasks, status) {
+    this.useTeamStore.getState().updateStatusOfMultipleTasks(tasks, status);
+  }
+
   /**
    * Execute the strategy for the given changed tasks
    * @param {Array} changedTasks - Array of tasks that have changed status

@@ -92,6 +92,14 @@ const createTeamStore = (initialState = {}) => {
               ),
             })),
 
+          updateStatusOfMultipleTasks: (tasks, status) => {
+            set((state) => ({
+              tasks: state.tasks.map((task) =>
+                tasks.includes(task.id) ? { ...task, status } : task
+              ),
+            }));
+          },
+
           startWorkflow: async (inputs) => {
             // Start the first task or set all to 'TODO' initially
             logger.info(`🚀 Team *${get().name}* is starting to work.`);

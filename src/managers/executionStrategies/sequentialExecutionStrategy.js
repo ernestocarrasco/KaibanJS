@@ -12,6 +12,10 @@ class SequentialExecutionStrategy extends WorkflowExecutionStrategy {
   }
 
   async execute(changedTasks, allTasks) {
+    if (!Array.isArray(changedTasks)) {
+      return;
+    }
+
     // Implement the logic for the sequential execution strategy
     // This method should handle the tasks in the order they are received
     // and ensure that tasks are executed sequentially

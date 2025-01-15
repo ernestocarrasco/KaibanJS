@@ -1,4 +1,4 @@
-import DepGraph from 'dependency-graph';
+import { DepGraph } from 'dependency-graph';
 import { TASK_STATUS_enum } from '../../utils/enums';
 import WorkflowExecutionStrategy from './workflowExecutionStrategy';
 
@@ -79,12 +79,16 @@ class HierarchyExecutionStrategy extends WorkflowExecutionStrategy {
   }
 
   async execute(changedTasks, allTasks) {
+    if (!Array.isArray(changedTasks)) {
+      return;
+    }
+
     // Handle changed tasks first
     for (const changedTask of changedTasks) {
       switch (changedTask.status) {
         case TASK_STATUS_enum.DOING:
           // Execute the task
-          await super._executeTask(changedTask);
+          super._executeTask(changedTask);
           break;
 
         case TASK_STATUS_enum.REVISE:
@@ -117,9 +121,12 @@ class HierarchyExecutionStrategy extends WorkflowExecutionStrategy {
       );
     });
 
-    executableTasks.forEach((task) => {
-      super._executeTask(task);
-    });
+    if (executableTasks.length > 0) {
+      this._updateStatusOfMultipleTasks(
+        executableTasks.map((t) => t.id),
+        TASK_STATUS_enum.DOING
+      );
+    }
   }
 }
 
