@@ -11,24 +11,21 @@
  */
 import { create } from 'zustand';
 import { devtools, subscribeWithSelector } from 'zustand/middleware';
-import { useAgentStore } from './agentStore';
-import { useTaskStore } from './taskStore';
 import {
-  TASK_STATUS_enum,
   AGENT_STATUS_enum,
-  WORKFLOW_STATUS_enum,
   FEEDBACK_STATUS_enum,
+  TASK_STATUS_enum,
+  WORKFLOW_STATUS_enum,
 } from '../utils/enums';
+import { calculateTotalWorkflowCost } from '../utils/llmCostCalculator';
+import { logger, setLogLevel } from '../utils/logger';
 import {
   getTaskTitleForLogs,
   interpolateTaskDescription,
 } from '../utils/tasks';
-import { logger, setLogLevel } from '../utils/logger';
-import { calculateTotalWorkflowCost } from '../utils/llmCostCalculator';
-import { subscribeWorkflowStatusUpdates } from '../subscribers/teamSubscriber';
-import { subscribeTaskStatusUpdates } from '../subscribers/taskSubscriber';
-import { setupWorkflowController } from './workflowController';
 import { initializeTelemetry } from '../utils/telemetry';
+import { useAgentStore } from './agentStore';
+import { useTaskStore } from './taskStore';
 
 // Initialize telemetry with default values
 const td = initializeTelemetry();
@@ -64,6 +61,7 @@ const createTeamStore = (initialState = {}) => {
           workflowContext: initialState.workflowContext || '',
           env: initialState.env || {},
           logLevel: initialState.logLevel,
+          flowType: initialState.flowType,
 
           setInputs: (inputs) => set({ inputs }), // Add a new action to update inputs
           setName: (name) => set({ name }), // Add a new action to update inputs
@@ -701,20 +699,6 @@ const createTeamStore = (initialState = {}) => {
       )
     )
   );
-
-  // ──── Workflow Controller Initialization ────────────────────────────
-  //
-  // Activates the workflow controller to monitor and manage task transitions and overall workflow states:
-  // - Monitors changes in task statuses, handling transitions from TODO to DONE.
-  // - Ensures tasks proceed seamlessly through their lifecycle stages within the application.
-  // ─────────────────────────────────────────────────────────────────────
-  setupWorkflowController(useTeamStore);
-
-  // Subscribe to task updates: Used mainly for logging purposes
-  subscribeTaskStatusUpdates(useTeamStore);
-
-  // Subscribe to WorkflowStatus updates: Used mainly for loggin purposes
-  subscribeWorkflowStatusUpdates(useTeamStore);
 
   return useTeamStore;
 };

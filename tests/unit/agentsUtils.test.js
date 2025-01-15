@@ -1,4 +1,4 @@
-const getParsedJSON = require('../../src/utils/parser').getParsedJSON; // Adjust the path as necessary
+import { getParsedJSON } from '../../src/utils/parser'; // Adjust the path as necessary
 
 describe('Agents Utility Functions', () => {
   describe('getParsedJSON', () => {

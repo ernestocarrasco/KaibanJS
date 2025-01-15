@@ -101,8 +101,17 @@
 //     return result;
 // }
 
+import fastq from 'fastq';
+
 function getParsedJSON(str) {
   try {
+    const queue = fastq.queue(async (task, callback) => {
+      console.log(task);
+      callback();
+    }, 1);
+
+    queue.push(str);
+
     // First attempt to parse the JSON string directly
     return JSON.parse(str);
   } catch {

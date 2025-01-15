@@ -19,6 +19,9 @@
 import { v4 as uuidv4 } from 'uuid';
 import { createTeamStore } from './stores';
 import { ReactChampionAgent } from './agents';
+import TaskManager from './managers/taskManager';
+import { subscribeTaskStatusUpdates } from './subscribers/taskSubscriber';
+import { subscribeWorkflowStatusUpdates } from './subscribers/teamSubscriber';
 import { TASK_STATUS_enum, WORKFLOW_STATUS_enum } from './utils/enums';
 
 class Agent {
@@ -96,13 +99,14 @@ class Agent {
 class Task {
   constructor({
     title = '',
+    id = uuidv4(),
     description,
     expectedOutput,
     agent,
     isDeliverable = false,
     externalValidationRequired = false,
   }) {
-    this.id = uuidv4();
+    this.id = id;
     this.title = title; // Title is now optional with a default empty string
     this.description = description;
     this.expectedOutput = expectedOutput;
@@ -150,9 +154,24 @@ class Team {
       logLevel,
     });
 
+    // ──── Task Manager Initialization ────────────────────────────
+    //
+    // Activates the task manager to monitor and manage task transitions and overall workflow states:
+    // - Monitors changes in task statuses, handling transitions from TODO to DONE.
+    // - Ensures tasks proceed seamlessly through their lifecycle stages within the application.
+    // ─────────────────────────────────────────────────────────────────────
+    this.taskManager = new TaskManager(this.store);
+    this.taskManager.start();
+
     // Add agents and tasks to the store, they will be set with the store automatically
     this.store.getState().addAgents(agents);
     this.store.getState().addTasks(tasks);
+
+    // Subscribe to task updates: Used mainly for logging purposes
+    subscribeTaskStatusUpdates(this.store);
+
+    // Subscribe to WorkflowStatus updates: Used mainly for loggin purposes
+    subscribeWorkflowStatusUpdates(this.store);
   }
 
   /**
