@@ -105,11 +105,11 @@ class Task {
     agent,
     isDeliverable = false,
     externalValidationRequired = false,
+    outputSchema = null,
   }) {
     this.id = id;
     this.title = title; // Title is now optional with a default empty string
     this.description = description;
-    this.expectedOutput = expectedOutput;
     this.isDeliverable = isDeliverable;
     this.agent = agent;
     this.status = TASK_STATUS_enum.TODO;
@@ -120,6 +120,8 @@ class Task {
     this.interpolatedTaskDescription = null;
     this.feedbackHistory = []; // Initialize feedbackHistory as an empty array
     this.externalValidationRequired = externalValidationRequired;
+    this.outputSchema = outputSchema; // Zod Schema
+    this.expectedOutput = expectedOutput;
   }
 
   setStore(store) {
