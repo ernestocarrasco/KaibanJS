@@ -1,11 +1,13 @@
 import { TASK_STATUS_enum } from '../../utils/enums';
 import WorkflowExecutionStrategy from './workflowExecutionStrategy';
-import PQueue from 'p-queue';
 
 class SequentialExecutionStrategy extends WorkflowExecutionStrategy {
   constructor() {
     super();
-    this.taskQueue = new PQueue({ concurrency: 1 });
+  }
+
+  getQueueConcurrency() {
+    return 1;
   }
 
   async startExecution(teamStoreState) {

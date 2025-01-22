@@ -11,11 +11,14 @@
  */
 import { create } from 'zustand';
 import { devtools, subscribeWithSelector } from 'zustand/middleware';
+import PQueue from 'p-queue';
+
 import {
   AGENT_STATUS_enum,
   FEEDBACK_STATUS_enum,
   TASK_STATUS_enum,
   WORKFLOW_STATUS_enum,
+  WORKFLOW_ACTION_enum,
 } from '../utils/enums';
 import { calculateTotalWorkflowCost } from '../utils/llmCostCalculator';
 import { logger, setLogLevel } from '../utils/logger';
@@ -28,7 +31,7 @@ import { useAgentStore } from './agentStore';
 import { useTaskStore } from './taskStore';
 import SequentialExecutionStrategy from '../workflowExecution/executionStrategies/sequentialExecutionStrategy';
 import HierarchyExecutionStrategy from '../workflowExecution/executionStrategies/hierarchyExecutionStrategy';
-
+import { WorkflowError } from '../utils/errors';
 // Initialize telemetry with default values
 const td = initializeTelemetry();
 
@@ -66,6 +69,10 @@ const createTeamStore = (initialState = {}) => {
           flowType: initialState.flowType,
           workflowExecutionStrategy: undefined,
 
+          executionQueue: initialState.executionQueue || new PQueue(),
+          abortController:
+            initialState.abortController || new AbortController(),
+
           setInputs: (inputs) => set({ inputs }), // Add a new action to update inputs
           setName: (name) => set({ name }), // Add a new action to update inputs
           setEnv: (env) => set({ env }), // Add a new action to update inputs
@@ -102,6 +109,9 @@ const createTeamStore = (initialState = {}) => {
               ),
             }));
           },
+          createExecutionQueue: (concurrency) => {
+            return new PQueue({ concurrency, autoStart: true });
+          },
           createWorkflowExecutionStrategy: () => {
             const state = get();
             const tasks = state.tasks;
@@ -134,6 +144,15 @@ const createTeamStore = (initialState = {}) => {
             }
 
             return strategy;
+          },
+          addTaskToExecutionQueue: async (agent, task, context) => {
+            await get().executionQueue.add(
+              () => get().workOnTask(agent, task, context),
+              {
+                id: task.id,
+                // signal: get().abortController.signal,
+              }
+            );
           },
 
           startWorkflow: async (inputs) => {
@@ -168,6 +187,9 @@ const createTeamStore = (initialState = {}) => {
               workflowLogs: [...state.workflowLogs, initialLog],
               teamWorkflowStatus: WORKFLOW_STATUS_enum.RUNNING,
               workflowExecutionStrategy: strategy,
+              executionQueue: get().createExecutionQueue(
+                strategy.getQueueConcurrency()
+              ),
             }));
 
             await strategy.startExecution(get());
@@ -268,6 +290,148 @@ const createTeamStore = (initialState = {}) => {
               workflowLogs: [...state.workflowLogs, newLog], // Append new log to the logs array
             }));
           },
+
+          stopWorkflow: () => {
+            const currentStatus = get().teamWorkflowStatus;
+
+            if (
+              currentStatus !== WORKFLOW_STATUS_enum.RUNNING &&
+              currentStatus !== WORKFLOW_STATUS_enum.PAUSED
+            ) {
+              throw new WorkflowError(
+                'Cannot stop workflow unless it is running or paused'
+              );
+            }
+
+            set({ teamWorkflowStatus: WORKFLOW_STATUS_enum.STOPPING });
+
+            try {
+              // Abort all active agent promises
+              for (const agentId of get().activePromises.keys()) {
+                get().abortAgentPromises(agentId, WORKFLOW_ACTION_enum.STOP);
+                get().clearAgentLoopState(agentId);
+              }
+
+              // Clear task queue
+              get().executionQueue.clear();
+
+              // Update all DOING tasks to TODO
+              const tasks = get().tasks;
+              tasks.forEach((task) => {
+                get().handleAgentTaskAborted({
+                  agent: task.agent,
+                  task,
+                  error: new WorkflowError('Workflow stopped by user'),
+                });
+                get().updateTaskStatus(task.id, TASK_STATUS_enum.TODO);
+              });
+
+              set({ teamWorkflowStatus: WORKFLOW_STATUS_enum.STOPPED });
+              logger.info('Workflow stopped successfully');
+            } catch (error) {
+              logger.error('Error stopping workflow:', error);
+              set({ teamWorkflowStatus: WORKFLOW_STATUS_enum.STOPPED });
+              throw error;
+            }
+          },
+          pauseWorkflow: () => {
+            const stats = get().getWorkflowStats();
+            logger.info('Pausing workflow execution');
+
+            // Create log entry for pausing workflow
+            const newLog = {
+              task: null,
+              agent: null,
+              timestamp: Date.now(),
+              logDescription: 'Workflow execution paused',
+              workflowStatus: WORKFLOW_STATUS_enum.PAUSED,
+              metadata: {
+                ...stats,
+              },
+              logType: 'WorkflowStatusUpdate',
+            };
+
+            // Create pause logs for all tasks currently in DOING status
+            const doingTasks = get().tasks.filter(
+              (task) => task.status === TASK_STATUS_enum.DOING
+            );
+            const taskPauseLogs = doingTasks.map((task) => ({
+              task,
+              agent: task.agent,
+              timestamp: Date.now(),
+              logDescription: `Task "${task.description}" paused during workflow pause`,
+              taskStatus: TASK_STATUS_enum.PAUSED,
+              metadata: {
+                previousStatus: TASK_STATUS_enum.DOING,
+              },
+              logType: 'TaskStatusUpdate',
+            }));
+
+            // Update tasks status to PAUSED
+            get().updateStatusOfMultipleTasks(
+              doingTasks.map((task) => task.id),
+              TASK_STATUS_enum.PAUSED
+            );
+
+            // Add task pause logs to workflow logs
+            set((state) => ({
+              teamWorkflowStatus: WORKFLOW_STATUS_enum.PAUSED,
+              workflowLogs: [...state.workflowLogs, ...taskPauseLogs, newLog],
+            }));
+
+            // Pause the execution queue
+            get().executionQueue.pause();
+          },
+
+          resumeWorkflow: () => {
+            const stats = get().getWorkflowStats();
+            logger.info('Resuming workflow execution');
+
+            // Create log entry for resuming workflow
+            const newLog = {
+              task: null,
+              agent: null,
+              timestamp: Date.now(),
+              logDescription: 'Workflow execution resumed',
+              workflowStatus: WORKFLOW_STATUS_enum.RUNNING,
+              metadata: {
+                ...stats,
+              },
+              logType: 'WorkflowStatusUpdate',
+            };
+
+            // Find all tasks that were paused
+            const pausedTasks = get().tasks.filter(
+              (task) => task.status === TASK_STATUS_enum.PAUSED
+            );
+            const taskResumeLogs = pausedTasks.map((task) => ({
+              task,
+              agent: task.agent,
+              timestamp: Date.now(),
+              logDescription: `Task "${task.description}" resumed from workflow pause`,
+              taskStatus: TASK_STATUS_enum.DOING,
+              metadata: {
+                previousStatus: TASK_STATUS_enum.PAUSED,
+              },
+              logType: 'TaskStatusUpdate',
+            }));
+
+            // Update tasks status back to DOING
+            get().updateStatusOfMultipleTasks(
+              pausedTasks.map((task) => task.id),
+              TASK_STATUS_enum.DOING
+            );
+
+            // Add task resume logs to workflow logs
+            set((state) => ({
+              teamWorkflowStatus: WORKFLOW_STATUS_enum.RUNNING,
+              workflowLogs: [...state.workflowLogs, ...taskResumeLogs, newLog],
+            }));
+
+            // Resume the execution queue
+            get().executionQueue.start();
+          },
+
           // Add a new action to update teamWorkflowStatus
           setTeamWorkflowStatus: (status) =>
             set({ teamWorkflowStatus: status }),

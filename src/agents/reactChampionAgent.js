@@ -30,7 +30,8 @@ import { RunnableWithMessageHistory } from '@langchain/core/runnables';
 import { ChatMessageHistory } from 'langchain/stores/message/in_memory';
 import { ChatPromptTemplate } from '@langchain/core/prompts';
 import { logger } from '../utils/logger';
-import { LLMInvocationError } from '../utils/errors';
+import { LLMInvocationError, AbortError } from '../utils/errors';
+
 class ReactChampionAgent extends BaseAgent {
   #executableAgent;
   constructor(config) {
@@ -489,7 +490,7 @@ class ReactChampionAgent extends BaseAgent {
       ExecutableAgent.invoke(
         { feedbackMessage },
         {
-          configurable: { sessionId: 'foo-bar-baz' },
+          configurable: { sessionId: task.id },
           callbacks: [
             {
               handleChatModelStart: (llm, messages) => {
@@ -510,6 +511,9 @@ class ReactChampionAgent extends BaseAgent {
               },
             },
           ],
+          signal: agent.store.getState().abortController
+            ? agent.store.getState().abortController.signal
+            : undefined,
         }
       ).catch((error) => {
         logger.error(
@@ -632,16 +636,30 @@ class ReactChampionAgent extends BaseAgent {
     // If the tool exists, use it
     const toolInput = parsedLLMOutput.actionInput;
     agent.handleUsingToolStart({ agent, task, tool, input: toolInput });
-    const toolResult = await tool.call(toolInput);
-    agent.handleUsingToolEnd({ agent, task, tool, output: toolResult });
-    // console.log(toolResult);
-    const feedbackMessage = this.promptTemplates.TOOL_RESULT_FEEDBACK({
-      agent,
-      task,
-      toolResult,
-      parsedLLMOutput,
-    });
-    return feedbackMessage;
+
+    try {
+      const toolResult = await Promise.race([
+        tool.call(toolInput),
+        new Promise((_, reject) => {
+          agent.store
+            .getState()
+            .abortController.signal.addEventListener('abort', () => {
+              reject(new AbortError('Tool execution aborted'));
+            });
+        }),
+      ]);
+      agent.handleUsingToolEnd({ agent, task, tool, output: toolResult });
+      // console.log(toolResult);
+      const feedbackMessage = this.promptTemplates.TOOL_RESULT_FEEDBACK({
+        agent,
+        task,
+        toolResult,
+        parsedLLMOutput,
+      });
+      return feedbackMessage;
+    } catch (_e) {
+      return '';
+    }
   }
 
   handleUsingToolStart({ agent, task, tool, input }) {

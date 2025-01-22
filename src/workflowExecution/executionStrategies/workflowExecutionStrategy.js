@@ -23,6 +23,14 @@ class WorkflowExecutionStrategy {
   }
 
   /**
+   * Returns the maximum number of tasks that can be executed concurrently
+   * @returns {number} The maximum number of concurrent tasks
+   */
+  getQueueConcurrency() {
+    return 1;
+  }
+
+  /**
    * Execute the task
    * @param {Object} task - The task to execute
    */
@@ -33,7 +41,8 @@ class WorkflowExecutionStrategy {
 
     const context = this.getContextForTask(teamStoreState, task);
 
-    return teamStoreState.workOnTask(agent, task, context);
+    return teamStoreState.addTaskToExecutionQueue(agent, task, context);
+    // return teamStoreState.workOnTask(agent, task, context);
   }
 
   /**

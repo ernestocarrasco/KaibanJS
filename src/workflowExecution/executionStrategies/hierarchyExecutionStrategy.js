@@ -22,6 +22,10 @@ class HierarchyExecutionStrategy extends WorkflowExecutionStrategy {
     return allTasks.filter((t) => task.dependencies.includes(t.id));
   }
 
+  getQueueConcurrency() {
+    return 5;
+  }
+
   /**
    * Gets all tasks that depend on the given task (tasks that have this task as a prerequisite)
    * @param {Object} task - The task to find dependent tasks for

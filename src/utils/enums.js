@@ -44,6 +44,9 @@ const AGENT_STATUS_enum = {
   ITERATION_END: 'ITERATION_END',
   AGENTIC_LOOP_ERROR: 'AGENTIC_LOOP_ERROR',
   WEIRD_LLM_OUTPUT: 'WEIRD_LLM_OUTPUT',
+  ABORTED: 'ABORTED',
+  ABORTED_BY_USER: 'ABORTED_BY_USER',
+  PAUSED: 'PAUSED',
 };
 
 // ──── Task Status Definitions ───────────────────────────────────────
@@ -66,6 +69,9 @@ const TASK_STATUS_enum = {
   DONE: 'DONE',
   AWAITING_VALIDATION: 'AWAITING_VALIDATION',
   VALIDATED: 'VALIDATED',
+  ABORTED: 'ABORTED',
+  ABORTED_BY_USER: 'ABORTED_BY_USER',
+  PAUSED: 'PAUSED',
 };
 
 // ──── Workflow Status Definitions ───────────────────────────────────────
@@ -88,6 +94,7 @@ const WORKFLOW_STATUS_enum = {
   ERRORED: 'ERRORED',
   FINISHED: 'FINISHED',
   BLOCKED: 'BLOCKED',
+  PAUSED: 'PAUSED',
 };
 
 // ──── Feedback Status Definitions ───────────────────────────────────────
