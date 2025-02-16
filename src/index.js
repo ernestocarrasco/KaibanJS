@@ -23,6 +23,7 @@ import { subscribeTaskStatusUpdates } from './subscribers/taskSubscriber';
 import { subscribeWorkflowStatusUpdates } from './subscribers/teamSubscriber';
 import { TASK_STATUS_enum, WORKFLOW_STATUS_enum } from './utils/enums';
 import { setupWorkflowController } from './workflowExecution/workflowController';
+
 class Agent {
   constructor({ type, ...config }) {
     this.agentInstance = this.createAgent(type, config);
@@ -98,6 +99,7 @@ class Agent {
     return this.agentInstance.promptTemplates;
   }
 }
+
 class Task {
   constructor({
     title = '',
@@ -111,9 +113,10 @@ class Task {
     outputSchema = null,
     allowParallelExecution = false,
     referenceId = undefined,
+    hooks = {},
   }) {
     this.id = id;
-    this.title = title; // Title is now optional with a default empty string
+    this.title = title;
     this.description = description;
     this.isDeliverable = isDeliverable;
     this.agent = agent;
@@ -123,12 +126,18 @@ class Task {
     this.duration = null;
     this.dependencies = dependencies;
     this.interpolatedTaskDescription = null;
-    this.feedbackHistory = []; // Initialize feedbackHistory as an empty array
+    this.feedbackHistory = [];
     this.externalValidationRequired = externalValidationRequired;
-    this.outputSchema = outputSchema; // Zod Schema
+    this.outputSchema = outputSchema;
     this.expectedOutput = expectedOutput;
     this.allowParallelExecution = allowParallelExecution;
     this.referenceId = referenceId;
+
+    // Store hooks in a hooks property
+    this.hooks = {
+      beforeTaskExecution: hooks.beforeTaskExecution || null,
+      afterTaskExecution: hooks.afterTaskExecution || null,
+    };
   }
 
   setStore(store) {
@@ -153,6 +162,8 @@ class Team {
    * @param {Object} config.inputs - Initial inputs for the team's tasks.
    * @param {Object} config.env - Environment variables for the team.
    * @param {boolean} config.managerWithLLM - Whether to use LLM for task management.
+   * @param {Function} config.beforeTeamExecution - Hook called before team execution starts
+   * @param {Function} config.afterTeamExecution - Hook called after team execution ends
    */
   constructor({
     name,
@@ -162,7 +173,14 @@ class Team {
     inputs = {},
     env = null,
     managerWithLLM = false,
+    hooks = {},
   }) {
+    // Store hooks in a hooks property
+    this.hooks = {
+      beforeTeamExecution: hooks.beforeTeamExecution || null,
+      afterTeamExecution: hooks.afterTeamExecution || null,
+    };
+
     this.store = createTeamStore({
       name,
       agents: [],
@@ -190,6 +208,26 @@ class Team {
 
     // Subscribe to WorkflowStatus updates: Used mainly for loggin purposes
     subscribeWorkflowStatusUpdates(this.store);
+  }
+
+  async executeBeforeTeamHook() {
+    if (this.hooks && typeof this.hooks.beforeTeamExecution === 'function') {
+      const state = this.store.getState();
+      await this.hooks.beforeTeamExecution({
+        tasks: state.tasks,
+      });
+    }
+  }
+
+  async executeAfterTeamHook() {
+    if (this.hooks && typeof this.hooks.afterTeamExecution === 'function') {
+      const state = this.store.getState();
+      await this.hooks.afterTeamExecution({
+        workflowLogs: state.workflowLogs,
+        tasks: state.tasks,
+        state: state,
+      });
+    }
   }
 
   /**
@@ -226,13 +264,16 @@ class Team {
    * @returns {void}
    */
   async start(inputs = null) {
+    await this.executeBeforeTeamHook();
+
     return new Promise((resolve, reject) => {
       const unsubscribe = this.store.subscribe(
         (state) => state.teamWorkflowStatus,
-        (status) => {
+        async (status) => {
           const state = this.store.getState();
           switch (status) {
             case WORKFLOW_STATUS_enum.FINISHED:
+              await this.executeAfterTeamHook();
               unsubscribe();
               resolve({
                 status,
@@ -241,10 +282,12 @@ class Team {
               });
               break;
             case WORKFLOW_STATUS_enum.ERRORED:
+              await this.executeAfterTeamHook();
               unsubscribe();
               reject(new Error('Workflow encountered an error'));
               break;
             case WORKFLOW_STATUS_enum.BLOCKED:
+              await this.executeAfterTeamHook();
               unsubscribe();
               resolve({
                 status,
@@ -252,19 +295,14 @@ class Team {
                 stats: this.getWorkflowStats(),
               });
               break;
-            default:
-              // For other statuses (like RUNNING), we don't resolve yet
-              break;
           }
         }
       );
 
       try {
-        // Trigger the workflow
         this.store.getState().startWorkflow(inputs);
       } catch (error) {
         reject(error);
-        // Unsubscribe to prevent memory leaks in case of an error
         unsubscribe();
       }
     });

@@ -36,11 +36,40 @@ class WorkflowExecutionStrategy {
    */
   async _executeTask(teamStoreState, task) {
     const shouldClone = this._isTaskAgentBusy(task, teamStoreState.tasks);
-
     const agent = shouldClone ? cloneAgent(task.agent) : task.agent;
     const context = this.getContextForTask(teamStoreState, task);
 
-    return await teamStoreState.workOnTask(agent, task, context);
+    // Execute before task hook
+    if (task.hooks && typeof task.hooks.beforeTaskExecution === 'function') {
+      try {
+        await task.hooks.beforeTaskExecution({
+          workflowLogs: teamStoreState.workflowLogs,
+          tasks: teamStoreState.tasks,
+          state: teamStoreState,
+        });
+      } catch (error) {
+        console.error('Error executing beforeTaskExecution hook:', error);
+      }
+    }
+
+    // Execute the task
+    const result = await teamStoreState.workOnTask(agent, task, context);
+
+    // Execute after task hook
+    if (task.hooks && typeof task.hooks.afterTaskExecution === 'function') {
+      try {
+        await task.hooks.afterTaskExecution({
+          result,
+          workflowLogs: teamStoreState.workflowLogs,
+          tasks: teamStoreState.tasks,
+          state: teamStoreState,
+        });
+      } catch (error) {
+        console.error('Error executing afterTaskExecution hook:', error);
+      }
+    }
+
+    return result;
   }
 
   /*

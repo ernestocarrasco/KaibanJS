@@ -771,6 +771,7 @@ const createTeamStore = (initialState = {}) => {
               const {
                 allowParallelExecution = false,
                 referenceId,
+                hooks: _hooks,
                 ...rest
               } = task;
               const cleanedTask = {
@@ -813,35 +814,44 @@ const createTeamStore = (initialState = {}) => {
                 : {}, // Provide an empty object if feedback is undefined
             });
 
+            // Get current state
+            const state = get();
+
+            // Extract hooks from state to exclude them
+            const { hooks: _hooks, ...cleanedState } = state;
+
             // Clone and clean agents
-            const cleanedAgents = get().agents.map((agent) =>
+            const cleanedAgents = cleanedState.agents.map((agent) =>
               cleanAgent(agent)
             );
 
             // Clone and clean tasks, including the nested agents
-            const cleanedTasks = get().tasks.map((task) => cleanTask(task));
+            const cleanedTasks = cleanedState.tasks.map((task) =>
+              cleanTask(task)
+            );
 
             // Clone and clean workflowLogs, including the potential agents and tasks
-            const cleanedWorkflowLogs = get().workflowLogs.map((log) => ({
-              ...log,
-              agent: log.agent ? cleanAgent(log.agent) : null, // Clean the agent if exists
-              task: log.task ? cleanTask(log.task) : null, // Clean the task if exists
-              timestamp: '[REDACTED]',
-              metadata: log.metadata ? cleanMetadata(log.metadata) : {}, // Clean metadata if exists
-            }));
+            const cleanedWorkflowLogs = cleanedState.workflowLogs.map(
+              (log) => ({
+                ...log,
+                agent: log.agent ? cleanAgent(log.agent) : null, // Clean the agent if exists
+                task: log.task ? cleanTask(log.task) : null, // Clean the task if exists
+                timestamp: '[REDACTED]',
+                metadata: log.metadata ? cleanMetadata(log.metadata) : {}, // Clean metadata if exists
+              })
+            );
 
             // Return only the parts of the state necessary for the snapshot or further processing
             return {
-              teamWorkflowStatus: get().teamWorkflowStatus,
-              workflowResult: get().workflowResult,
-              name: get().name,
+              teamWorkflowStatus: cleanedState.teamWorkflowStatus,
+              workflowResult: cleanedState.workflowResult,
+              name: cleanedState.name,
               agents: cleanedAgents,
               tasks: cleanedTasks,
               workflowLogs: cleanedWorkflowLogs,
-              inputs: get().inputs,
-              workflowContext: get().workflowContext,
-              logLevel: get().logLevel,
-              // Include other state parts as necessary, cleaned as needed
+              inputs: cleanedState.inputs,
+              workflowContext: cleanedState.workflowContext,
+              logLevel: cleanedState.logLevel,
             };
           },
         }),
