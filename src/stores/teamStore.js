@@ -63,6 +63,7 @@ const createTeamStore = (initialState = {}) => {
           workflowLogs: initialState.workflowLogs || [],
           inputs: initialState.inputs || {},
           workflowContext: initialState.workflowContext || '',
+          workflowInternalMemory: initialState.workflowInternalMemory || {},
           env: initialState.env || {},
           logLevel: initialState.logLevel,
           flowType: initialState.flowType,
@@ -75,6 +76,19 @@ const createTeamStore = (initialState = {}) => {
           setInputs: (inputs) => set({ inputs }), // Add a new action to update inputs
           setName: (name) => set({ name }), // Add a new action to update inputs
           setEnv: (env) => set({ env }), // Add a new action to update inputs
+
+          // Add action to update workflowInternalMemory
+          updateWorkflowInternalMemory: (updates) =>
+            set((state) => ({
+              workflowInternalMemory: {
+                ...state.workflowInternalMemory,
+                ...updates,
+              },
+            })),
+
+          // Add action to clear workflowInternalMemory
+          clearWorkflowInternalMemory: () =>
+            set({ workflowInternalMemory: {} }),
 
           addAgents: (agents) => {
             const { env } = get();
@@ -243,6 +257,7 @@ const createTeamStore = (initialState = {}) => {
                 workflowLogs: [],
                 workflowContext: '',
                 workflowResult: null,
+                workflowInternalMemory: {},
                 teamWorkflowStatus: WORKFLOW_STATUS_enum.INITIAL,
               };
             });
@@ -772,6 +787,7 @@ const createTeamStore = (initialState = {}) => {
                 allowParallelExecution = false,
                 referenceId,
                 hooks: _hooks,
+                workflowInternalMemory: _workflowInternalMemory,
                 ...rest
               } = task;
               const cleanedTask = {
@@ -834,10 +850,10 @@ const createTeamStore = (initialState = {}) => {
             const cleanedWorkflowLogs = cleanedState.workflowLogs.map(
               (log) => ({
                 ...log,
-                agent: log.agent ? cleanAgent(log.agent) : null, // Clean the agent if exists
-                task: log.task ? cleanTask(log.task) : null, // Clean the task if exists
+                agent: log.agent ? cleanAgent(log.agent) : null,
+                task: log.task ? cleanTask(log.task) : null,
                 timestamp: '[REDACTED]',
-                metadata: log.metadata ? cleanMetadata(log.metadata) : {}, // Clean metadata if exists
+                metadata: log.metadata ? cleanMetadata(log.metadata) : {},
               })
             );
 
